@@ -1,6 +1,6 @@
 schema_version: 2
 product: SecRandom
-repository: SECTL/SecRandom
+repository: Pro-Qin/SecRandom-Custom
 manifest:
   file_name: SecRandom-update-manifest.json
   signature_file_name: SecRandom-update-manifest.sig

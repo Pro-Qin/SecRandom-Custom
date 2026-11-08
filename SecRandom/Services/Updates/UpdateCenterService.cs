@@ -34,14 +34,15 @@ public sealed class UpdateCenterService(
     : INotifyPropertyChanged
 {
     private const string Product = "SecRandom";
-    private const string Repository = "SECTL/SecRandom";
+    // custom-only: 特供构建只从 Pro-Qin/SecRandom-Custom 获取更新，不读取上游发布
+    private const string Repository = "Pro-Qin/SecRandom-Custom";
     private const string ManifestFileName = "SecRandom-update-manifest.json";
     private const string SignatureFileName = "SecRandom-update-manifest.sig";
     private const int MaxMetadataBytes = 256 * 1024;
     private const int MaxManifestBytes = 4 * 1024 * 1024;
     private const int MaxSignatureBytes = 64;
     private const int MaxArtifactBytes = 512 * 1024 * 1024;
-    private static readonly Uri GitHubRawMetadataUri = new("https://raw.githubusercontent.com/SECTL/SecRandom/master/metadata.yaml");
+    private static readonly Uri GitHubRawMetadataUri = new("https://raw.githubusercontent.com/Pro-Qin/SecRandom-Custom/master/metadata.yaml");
     private static readonly Uri GitHubMirrorPrefix = new("https://ghproxy.sectl.cn/");
     private readonly HttpClient _httpClient = httpClient;
     private readonly IDeserializer _yamlDeserializer = new DeserializerBuilder()
