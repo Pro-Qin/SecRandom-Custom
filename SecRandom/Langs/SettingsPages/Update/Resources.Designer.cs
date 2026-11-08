@@ -183,6 +183,24 @@ namespace SecRandom.Langs.SettingsPages.Update {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to 镜像前缀.
+        /// </summary>
+        public static string S_Strategy_Source_Mirrors {
+            get {
+                return ResourceManager.GetString("S_Strategy_Source_Mirrors", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 多个前缀用英文逗号分隔，留空则使用内置镜像列表.
+        /// </summary>
+        public static string S_Strategy_Source_Mirrors_D {
+            get {
+                return ResourceManager.GetString("S_Strategy_Source_Mirrors_D", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to 更新策略.
         /// </summary>
         public static string S_Strategy {

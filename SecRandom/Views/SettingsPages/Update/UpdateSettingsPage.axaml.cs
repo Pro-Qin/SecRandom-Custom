@@ -35,6 +35,13 @@ public partial class UpdateSettingsPage : UserControl
         set => Settings.UpdateChannel = Enum.IsDefined((UpdateChannel)value) ? (UpdateChannel)value : UpdateChannel.Release;
     }
 
+    // custom-only: 更新来源下拉，0=自动、1=GitHub 直连、2=镜像
+    public int SelectedSourceIndex
+    {
+        get => (int)Settings.SourceMode;
+        set => Settings.SourceMode = Enum.IsDefined((UpdateSourceMode)value) ? (UpdateSourceMode)value : UpdateSourceMode.Auto;
+    }
+
     private MainConfigHandler ConfigHandler { get; } = IAppHost.GetService<MainConfigHandler>();
 
     private async void CheckForUpdates(object? sender, RoutedEventArgs e)

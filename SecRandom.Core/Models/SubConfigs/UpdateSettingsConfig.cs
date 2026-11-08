@@ -12,6 +12,18 @@ public partial class UpdateSettingsConfig : ObservableObject, IJsonOnDeserialize
     [ObservableProperty] private int _autoUpdateMode = 3;
     [ObservableProperty] private int _updateModeVersion = 1;
     [ObservableProperty] private UpdateChannel _updateChannel = UpdateChannel.Release;
+
+    // custom-only: 特供构建的取源策略；AUTO 先直连，超时或失败后按 MirrorPrefixes 顺序降级
+    [ObservableProperty] private UpdateSourceMode _sourceMode = UpdateSourceMode.Auto;
+
+    /// <summary>
+    /// 镜像前缀，多个用逗号分隔，拼在完整 GitHub 地址之前。留空表示使用 <see cref="BuiltInMirrorPrefixes"/>。
+    /// custom-only：前缀属于配置而不是业务逻辑里的常量，方便校园网环境替换可用镜像。
+    /// </summary>
+    [ObservableProperty] private string _mirrorPrefixes = BuiltInMirrorPrefixes;
+
+    public const string BuiltInMirrorPrefixes = "https://gh-proxy.com/,https://ghfast.top/,https://ghproxy.net/,https://hub.gitmirror.com/";
+
     [ObservableProperty]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     private DateTime? _lastCheckTime;

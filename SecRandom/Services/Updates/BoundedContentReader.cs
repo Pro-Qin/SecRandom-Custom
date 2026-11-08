@@ -9,10 +9,15 @@ namespace SecRandom.Services.Updates;
 internal static class BoundedContentReader
 {
     public static async Task<byte[]> GetAsync(HttpClient client, Uri uri, int maximumBytes, CancellationToken cancellationToken)
+        => await GetAsync(client, uri, maximumBytes, cancellationToken, perRequestTimeout: null).ConfigureAwait(false);
+
+    // custom-only: 每次取源可以给一个比 HttpClient 全局超时更短的上限，让 AUTO 模式能在固定时间内降级到镜像
+    public static async Task<byte[]> GetAsync(HttpClient client, Uri uri, int maximumBytes, CancellationToken cancellationToken, TimeSpan? perRequestTimeout)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        if (client.Timeout != Timeout.InfiniteTimeSpan)
-            timeout.CancelAfter(client.Timeout);
+        var timeoutCap = perRequestTimeout ?? (client.Timeout != Timeout.InfiniteTimeSpan ? client.Timeout : null);
+        if (timeoutCap is not null)
+            timeout.CancelAfter(timeoutCap.Value);
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token)
             .ConfigureAwait(false);

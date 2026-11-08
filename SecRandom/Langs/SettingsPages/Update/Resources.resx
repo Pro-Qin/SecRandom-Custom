@@ -61,7 +61,13 @@
     <value>更新来源</value>
   </data>
   <data name="S_Strategy_Source_D" xml:space="preserve">
-    <value>自动选择会依次尝试思拓创联官方、GitHub 镜像和 GitHub</value>
+    <value>自动会先直连特供仓库，超时或失败后按顺序切换到镜像</value>
+  </data>
+  <data name="S_Strategy_Source_Mirrors" xml:space="preserve">
+    <value>镜像前缀</value>
+  </data>
+  <data name="S_Strategy_Source_Mirrors_D" xml:space="preserve">
+    <value>多个前缀用英文逗号分隔，留空则使用内置镜像列表</value>
   </data>
   <data name="O_UpdateSource_OfficialMirror" xml:space="preserve">
     <value>官方镜像</value>

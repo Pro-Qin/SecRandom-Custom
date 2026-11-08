@@ -10,7 +10,25 @@ public enum UpdateChannel
 public enum UpdateSource
 {
     GitHub,
-    GitHubMirror
+    GitHubMirror,
+
+    // 只服务仓库内文件的镜像通道（jsDelivr 按仓库路径取 metadata.yaml），不提供 release 资产
+    JsDelivr
+}
+
+/// <summary>
+/// 更新检查的取源策略。custom-only：特供构建允许在直连与镜像之间切换，避免校园网等弱网环境检查失败。
+/// </summary>
+public enum UpdateSourceMode
+{
+    /// <summary>先直连，失败或超时后按顺序降级到镜像。</summary>
+    Auto,
+
+    /// <summary>只用官方 GitHub 直连。</summary>
+    Direct,
+
+    /// <summary>只用镜像通道。</summary>
+    Mirror
 }
 
 public enum UpdatePackageKind

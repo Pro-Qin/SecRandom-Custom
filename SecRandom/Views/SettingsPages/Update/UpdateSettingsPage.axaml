@@ -89,6 +89,27 @@
                                            IsClickEnabled="True"
                                            Click="ForceCheckForUpdates" />
             </fa:FASettingsExpander>
+
+            <!-- custom-only: 特供构建的取源策略，AUTO 先直连再按镜像前缀顺序降级 -->
+            <fa:FASettingsExpander x:Name="S_Strategy_Source"
+                                   Header="{x:Static lsp:Resources.S_Strategy_Source}"
+                                   Description="{x:Static lsp:Resources.S_Strategy_Source_D}"
+                                   IconSource="{sr:FluentIconSource {sr:Fi CloudFilled}}">
+                <fa:FASettingsExpander.Footer>
+                    <ComboBox SelectedIndex="{Binding SelectedSourceIndex}">
+                        <ComboBoxItem Content="{x:Static lsp:Resources.O_UpdateSource_Auto}" />
+                        <ComboBoxItem Content="{x:Static lsp:Resources.O_UpdateSource_GitHub}" />
+                        <ComboBoxItem Content="{x:Static lsp:Resources.O_UpdateSource_GitHubMirror}" />
+                    </ComboBox>
+                </fa:FASettingsExpander.Footer>
+                <fa:FASettingsExpanderItem x:Name="S_Strategy_Source_Mirrors"
+                                           Content="{x:Static lsp:Resources.S_Strategy_Source_Mirrors}"
+                                           Description="{x:Static lsp:Resources.S_Strategy_Source_Mirrors_D}">
+                    <TextBox Text="{Binding Settings.MirrorPrefixes, Mode=TwoWay}"
+                             PlaceholderText="https://gh-proxy.com/"
+                             Margin="0 4 0 0" />
+                </fa:FASettingsExpanderItem>
+            </fa:FASettingsExpander>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

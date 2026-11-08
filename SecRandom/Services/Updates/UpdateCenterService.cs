@@ -19,6 +19,7 @@ using Microsoft.Extensions.Logging;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
 using SecRandom.Core;
+using SecRandom.Core.Models.SubConfigs;
 using SecRandom.Core.Services.Config;
 using SecRandom.Shared;
 using SecRandom.Shared.Updates;
@@ -43,7 +44,16 @@ public sealed class UpdateCenterService(
     private const int MaxSignatureBytes = 64;
     private const int MaxArtifactBytes = 512 * 1024 * 1024;
     private static readonly Uri GitHubRawMetadataUri = new("https://raw.githubusercontent.com/Pro-Qin/SecRandom-Custom/master/metadata.yaml");
-    private static readonly Uri GitHubMirrorPrefix = new("https://ghproxy.sectl.cn/");
+
+    // jsDelivr 只按仓库路径取仓库文件，能读到 metadata.yaml，但拿不到 release 资产，
+    // 因此它是 metadata 专用通道，不参与安装包下载。
+    private static readonly Uri JsDelivrMetadataUri = new($"https://cdn.jsdelivr.net/gh/{Repository}@master/metadata.yaml");
+
+    // custom-only: AUTO 模式下单个来源的最长等待时间，超过就静默降级到下一个来源，避免弱网卡住设置页
+    private static readonly TimeSpan SourceProbeTimeout = TimeSpan.FromSeconds(5);
+
+    // 安装包是几百兆的资产，5 秒只适用于元数据；这里给整包一个上限，避免弱网下无限等待
+    private static readonly TimeSpan ArtifactDownloadTimeout = TimeSpan.FromMinutes(10);
     private readonly HttpClient _httpClient = httpClient;
     private readonly IDeserializer _yamlDeserializer = new DeserializerBuilder()
         .IgnoreUnmatchedProperties()
@@ -53,7 +63,7 @@ public sealed class UpdateCenterService(
     private string _statusMessage = Text("M_StatusNotChecked");
     private UpdateManifest? _manifest;
     private UpdateArtifact? _selectedArtifact;
-    private UpdateSource _activeSource;
+    private UpdateSourceEndpoint? _activeSource;
     private string? _downloadedPackagePath;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -259,12 +269,16 @@ public sealed class UpdateCenterService(
         configHandler.Save();
     }
 
-    private async Task<string> GetChannelTagAsync(UpdateSource source, UpdateChannel channel, CancellationToken cancellationToken)
+    private async Task<string> GetChannelTagAsync(UpdateSourceEndpoint endpoint, UpdateChannel channel, CancellationToken cancellationToken)
     {
-        var metadataUri = source == UpdateSource.GitHub
-            ? GitHubRawMetadataUri
-            : new Uri($"{GitHubMirrorPrefix}{GitHubRawMetadataUri.AbsoluteUri}");
-        var metadataBytes = await BoundedContentReader.GetAsync(_httpClient, metadataUri, MaxMetadataBytes, cancellationToken);
+        var metadataUri = endpoint.Transport switch
+        {
+            UpdateSource.GitHub => GitHubRawMetadataUri,
+            UpdateSource.GitHubMirror => new Uri($"{endpoint.Prefix}{GitHubRawMetadataUri.AbsoluteUri}"),
+            UpdateSource.JsDelivr => JsDelivrMetadataUri,
+            _ => throw new ArgumentOutOfRangeException(nameof(endpoint))
+        };
+        var metadataBytes = await BoundedContentReader.GetAsync(_httpClient, metadataUri, MaxMetadataBytes, cancellationToken, SourceProbeTimeout);
         var yaml = Encoding.UTF8.GetString(metadataBytes);
         var metadata = _yamlDeserializer.Deserialize<MetadataDocument>(yaml) ?? throw new InvalidDataException(Text("M_MetadataEmpty"));
         if (metadata.SchemaVersion != 2 || !string.Equals(metadata.Product, Product, StringComparison.Ordinal) || metadata.Channels is null)
@@ -275,15 +289,16 @@ public sealed class UpdateCenterService(
             : throw new InvalidDataException(string.Format(CultureInfo.CurrentUICulture, Text("M_MetadataChannelMissing"), name));
     }
 
-    private async Task<byte[]> DownloadAssetAsync(UpdateSource source, string tag, string assetName, int maxBytes, CancellationToken cancellationToken)
+    private async Task<byte[]> DownloadAssetAsync(UpdateSourceEndpoint endpoint, string tag, string assetName, int maxBytes, CancellationToken cancellationToken, TimeSpan requestTimeout)
     {
-        Uri uri = source switch
+        var assetUri = $"https://github.com/{Repository}/releases/download/{Uri.EscapeDataString(tag)}/{Uri.EscapeDataString(assetName)}";
+        Uri uri = endpoint.Transport switch
         {
-            UpdateSource.GitHub => new Uri($"https://github.com/{Repository}/releases/download/{Uri.EscapeDataString(tag)}/{Uri.EscapeDataString(assetName)}"),
-            UpdateSource.GitHubMirror => new Uri($"{GitHubMirrorPrefix}https://github.com/{Repository}/releases/download/{Uri.EscapeDataString(tag)}/{Uri.EscapeDataString(assetName)}"),
-            _ => throw new ArgumentOutOfRangeException(nameof(source))
+            UpdateSource.GitHub => new Uri(assetUri),
+            UpdateSource.GitHubMirror => new Uri($"{endpoint.Prefix}{assetUri}"),
+            _ => throw new ArgumentOutOfRangeException(nameof(endpoint))
         };
-        return await BoundedContentReader.GetAsync(_httpClient, uri, maxBytes, cancellationToken);
+        return await BoundedContentReader.GetAsync(_httpClient, uri, maxBytes, cancellationToken, requestTimeout);
     }
 
     private UpdateManifest VerifyAndDeserializeManifest(byte[] manifestBytes, byte[] signatureBytes, string expectedTag, UpdateChannel expectedChannel)
@@ -476,27 +491,28 @@ public sealed class UpdateCenterService(
 
     private UpdateChannel GetChannel() => configHandler.Data.UpdateSettings.UpdateChannel;
 
-    private async Task<(UpdateSource Source, UpdateManifest Manifest)> GetManifestAsync(
+    private async Task<(UpdateSourceEndpoint Source, UpdateManifest Manifest)> GetManifestAsync(
         UpdateChannel channel, CancellationToken cancellationToken)
     {
         Exception? lastException = null;
-        foreach (var source in GetSources())
+        foreach (var endpoint in GetSourceEndpoints())
         {
             try
             {
-                var tag = await GetChannelTagAsync(source, channel, cancellationToken);
-                var manifestBytes = await DownloadAssetAsync(source, tag, ManifestFileName, MaxManifestBytes, cancellationToken);
-                var signatureBytes = await DownloadAssetAsync(source, tag, SignatureFileName, MaxSignatureBytes, cancellationToken);
-                return (source, VerifyAndDeserializeManifest(manifestBytes, signatureBytes, tag, channel));
+                var tag = await GetChannelTagAsync(endpoint, channel, cancellationToken);
+                var manifestBytes = await DownloadAssetAsync(endpoint, tag, ManifestFileName, MaxManifestBytes, cancellationToken, SourceProbeTimeout);
+                var signatureBytes = await DownloadAssetAsync(endpoint, tag, SignatureFileName, MaxSignatureBytes, cancellationToken, SourceProbeTimeout);
+                return (endpoint, VerifyAndDeserializeManifest(manifestBytes, signatureBytes, tag, channel));
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
             catch (Exception exception)
             {
+                // custom-only: 单个来源（含 5 秒超时）失败只记日志并静默换下一个来源，不向 UI 弹任何提示
                 lastException = exception;
-                logger.LogInformation(exception, "更新源 {Source} 不可用，尝试下一个来源。", source);
+                logger.LogInformation(exception, "更新源 {Source} 不可用，尝试下一个来源。", endpoint.Key);
             }
         }
 
@@ -509,28 +525,70 @@ public sealed class UpdateCenterService(
         throw lastException ?? new InvalidOperationException(Text("M_NoUpdateSourceAvailable"));
     }
 
-    private static IEnumerable<UpdateSource> GetSources()
+    /// <summary>
+    /// custom-only: 按设置里的取源策略装配候选来源。AUTO 先直连、再按配置前缀顺序降级，最后用 jsDelivr
+    /// 读取 metadata（它拿不到 release 资产，只在前面的通道全部失效时才有意义）。
+    /// </summary>
+    private IReadOnlyList<UpdateSourceEndpoint> GetSourceEndpoints()
     {
-        return [UpdateSource.GitHubMirror, UpdateSource.GitHub];
+        var direct = new UpdateSourceEndpoint("direct", UpdateSource.GitHub, null);
+        var mirrors = ResolveMirrorPrefixes()
+            .Select((prefix, index) => new UpdateSourceEndpoint($"mirror{index + 1}", UpdateSource.GitHubMirror, prefix))
+            .ToArray();
+        var jsDelivr = new UpdateSourceEndpoint("jsdelivr", UpdateSource.JsDelivr, null);
+
+        return configHandler.Data.UpdateSettings.SourceMode switch
+        {
+            UpdateSourceMode.Direct => [direct],
+            UpdateSourceMode.Mirror => [.. mirrors, jsDelivr],
+            _ => [direct, .. mirrors, jsDelivr]
+        };
+    }
+
+    private string[] ResolveMirrorPrefixes()
+    {
+        var configured = configHandler.Data.UpdateSettings.MirrorPrefixes;
+        if (string.IsNullOrWhiteSpace(configured))
+            configured = UpdateSettingsConfig.BuiltInMirrorPrefixes;
+
+        var prefixes = new List<string>();
+        foreach (var candidate in configured.Split([',', ';', ' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri)
+                || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
+            {
+                logger.LogWarning("忽略无效的更新镜像前缀 {Prefix}。", candidate);
+                continue;
+            }
+
+            var normalized = uri.AbsoluteUri.EndsWith('/') ? uri.AbsoluteUri : uri.AbsoluteUri + "/";
+            if (!prefixes.Contains(normalized, StringComparer.OrdinalIgnoreCase))
+                prefixes.Add(normalized);
+        }
+
+        return [.. prefixes];
     }
 
     private async Task<byte[]> DownloadAssetWithFallbackAsync(string tag, string assetName, int maxBytes, CancellationToken cancellationToken)
     {
         Exception? lastException = null;
-        foreach (var source in GetSources().OrderBy(source => source == _activeSource ? 0 : 1))
+        // 能下载 release 资产的来源优先，并且先用检查更新时命中的那个来源
+        foreach (var endpoint in GetSourceEndpoints()
+                     .Where(endpoint => endpoint.Transport != UpdateSource.JsDelivr)
+                     .OrderBy(endpoint => endpoint == _activeSource ? 0 : 1))
         {
             try
             {
-                return await DownloadAssetAsync(source, tag, assetName, maxBytes, cancellationToken);
+                return await DownloadAssetAsync(endpoint, tag, assetName, maxBytes, cancellationToken, ArtifactDownloadTimeout);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
             catch (Exception exception)
             {
                 lastException = exception;
-                logger.LogInformation(exception, "更新包来源 {Source} 不可用，尝试下一个来源。", source);
+                logger.LogInformation(exception, "更新包来源 {Source} 不可用，尝试下一个来源。", endpoint.Key);
             }
         }
 
@@ -598,6 +656,9 @@ public sealed class UpdateCenterService(
         OnPropertyChanged(propertyName!);
         return true;
     }
+
+    // custom-only: 一个候选取源通道，Prefix 只在 GitHubMirror 通道上有值
+    private readonly record struct UpdateSourceEndpoint(string Key, UpdateSource Transport, string? Prefix);
 
     private sealed class MetadataDocument
     {
