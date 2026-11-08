@@ -42,6 +42,7 @@ public partial class FloatingWindow : Window
     private bool _isDocked;
     private bool _isDockedOnLeft;
     private int _dockRevision;
+    private DateTimeOffset _lastInteractionUtc = DateTimeOffset.MinValue;
     private int _snapAnimationRevision;
     private bool _isMovingDockHandle;
     private bool _dockHandleWasDragged;
@@ -832,6 +833,13 @@ public partial class FloatingWindow : Window
         // 又不丢置顶效果。
         ReassertNativeTopmost();
 
+        // 展开态下只要在悬浮窗上按下（点按钮、点空白、准备拖），收纳倒计时就从这一刻重新算。
+        if (!_isDocked && !_isDockTransitioning)
+        {
+            _lastInteractionUtc = DateTimeOffset.UtcNow;
+            ScheduleDock();
+        }
+
         if (EffectiveFloatingWindowSettings.Draggable
             && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
         {
@@ -1068,17 +1076,35 @@ public partial class FloatingWindow : Window
     private void ScheduleDock()
     {
         var seconds = Math.Clamp(EffectiveFloatingWindowSettings.StickToEdgeRecoverSeconds, 0, 60);
-        var dockRevision = ++_dockRevision;
+        ++_dockRevision;
         if (seconds == 0)
             return;
 
+        ScheduleDockTimer(TimeSpan.FromSeconds(seconds), seconds);
+    }
+
+    private void ScheduleDockTimer(TimeSpan delay, int configuredSeconds)
+    {
+        var dockRevision = _dockRevision;
         DispatcherTimer.RunOnce(() =>
         {
-            if (dockRevision == _dockRevision
-                && !_isDocked
-                && EffectiveFloatingWindowSettings.StickToEdge)
-                _ = CollapseToDockAsync();
-        }, TimeSpan.FromSeconds(seconds));
+            if (dockRevision != _dockRevision
+                || _isDocked
+                || _isDockTransitioning
+                || !EffectiveFloatingWindowSettings.StickToEdge)
+                return;
+
+            // 倒计时只从"展开"开始算的话，快到点的时候点一下里面的按钮，
+            // 窗口就会在手指底下当场收起来。改成空闲计时：期间任何一次按下都重新起算。
+            var remaining = TimeSpan.FromSeconds(configuredSeconds) - (DateTimeOffset.UtcNow - _lastInteractionUtc);
+            if (remaining > TimeSpan.Zero)
+            {
+                ScheduleDockTimer(remaining, configuredSeconds);
+                return;
+            }
+
+            _ = CollapseToDockAsync();
+        }, delay);
     }
 
     private void ScheduleDockIfAtEdge()

@@ -23,7 +23,12 @@ internal static class DrawAnimationHelper
         if (target is null)
             return;
 
-        await EnsureLayoutAsync(target).ConfigureAwait(true);
+        // 帧间隔由调用方控制（默认 50ms），上一帧的卡片早就量好了。
+        // 这里只在容器确实还没布局时等一次，否则每帧多背一次 layout 往返，
+        // 12 帧就会排队成"点下去几秒后才开始动"。
+        if (target.Bounds.Width <= 0 || target.Bounds.Height <= 0)
+            await EnsureLayoutAsync(target).ConfigureAwait(true);
+
         var resultItems = GetResultAnimationItems(target).ToList();
         if (style == DrawAnimationStyleMode.DirectRotate || durationMs <= 0)
         {
@@ -48,9 +53,9 @@ internal static class DrawAnimationHelper
         if (target is null)
             return;
 
-        ResetTarget(target);
-        foreach (var item in GetResultAnimationItems(target))
-            ResetTarget(item);
+        // 揭晓是这一轮的最后一次写入：先把预览阶段可能残留的半透明/位移清干净，
+        // 否则上一帧被抢占后停在 opacity≈0 的卡片会直接变成一块空白面板。
+        ResetAll(target);
 
         if (!enabled || style == DrawAnimationStyleMode.DirectRotate || durationMs <= 0)
             return;
@@ -69,7 +74,41 @@ internal static class DrawAnimationHelper
             style,
             durationMs,
             Math.Min(index * 45, 220)));
-        await Task.WhenAll(tasks).ConfigureAwait(true);
+        try
+        {
+            await Task.WhenAll(tasks).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            // 窗口在这一轮动画中途关闭或又来了新一轮，收尾交给 finally。
+        }
+        finally
+        {
+            // 终态兜底：无论动画是否被中途取消，结果卡片都必须停在完全可见的状态。
+            ResetAll(target);
+        }
+    }
+
+    /// <summary>取消目标上所有在跑的动画，但不改变它们当前的视觉状态。</summary>
+    public static void CancelAll(Control? target)
+    {
+        if (target is null)
+            return;
+
+        Cancel(target);
+        foreach (var item in GetResultAnimationItems(target).ToList())
+            Cancel(item);
+    }
+
+    /// <summary>取消并复位目标与所有结果卡片，清除半透明、位移与旋转残留。</summary>
+    public static void ResetAll(Control? target)
+    {
+        if (target is null)
+            return;
+
+        ResetTarget(target);
+        foreach (var item in GetResultAnimationItems(target).ToList())
+            ResetTarget(item);
     }
 
     private static async Task EnsureLayoutAsync(Control target)
@@ -83,26 +122,18 @@ internal static class DrawAnimationHelper
 
     private static async Task AnimateAsync(Control target, DrawAnimationStyleMode style, int durationMs, int delayMs = 0)
     {
-        var token = ReplaceToken(target);
+        var source = ReplaceToken(target);
+        var token = source.Token;
         var transformGroup = BuildTransformGroup(style);
         var startOpacity = ResolveStartOpacity(style);
-        await ApplyAnimationFrameAsync(target, transformGroup, style, 0, startOpacity).ConfigureAwait(true);
-
-        if (delayMs > 0)
-        {
-            try
-            {
-                await Task.Delay(delayMs, token).ConfigureAwait(true);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-        }
-
-        var steps = AnimationFramePolicy.ResolveFrameCount(durationMs);
         try
         {
+            await ApplyAnimationFrameAsync(target, transformGroup, style, 0, startOpacity).ConfigureAwait(true);
+
+            if (delayMs > 0)
+                await Task.Delay(delayMs, token).ConfigureAwait(true);
+
+            var steps = AnimationFramePolicy.ResolveFrameCount(durationMs);
             for (var i = 0; i <= steps; i++)
             {
                 token.ThrowIfCancellationRequested();
@@ -115,11 +146,13 @@ internal static class DrawAnimationHelper
         }
         catch (OperationCanceledException)
         {
+            // 被更新的预览帧或揭晓抢占：这里刻意不复位。
+            // 继任者的第一帧会立刻写入自己的起始值，抢先复位只会闪一下满透明度。
             return;
         }
         finally
         {
-            ClearToken(target, token);
+            ReleaseToken(target, source);
         }
 
         ResetTarget(target);
@@ -243,43 +276,45 @@ internal static class DrawAnimationHelper
         target.RenderTransform = null;
     }
 
-    private static CancellationToken ReplaceToken(Control target)
+    private static CancellationTokenSource ReplaceToken(Control target)
     {
+        CancellationTokenSource? previous;
+        CancellationTokenSource current;
         lock (AnimationTokens)
         {
-            if (AnimationTokens.Remove(target, out var existing))
-            {
-                existing.Cancel();
-                existing.Dispose();
-            }
-
-            var current = new CancellationTokenSource();
+            AnimationTokens.TryGetValue(target, out previous);
+            AnimationTokens.Remove(target);
+            current = new CancellationTokenSource();
             AnimationTokens[target] = current;
-            return current.Token;
         }
+
+        // 只取消、绝不 Dispose：旧动画可能正停在 Task.Delay 上，
+        // Dispose 一个仍被 await 的 token 会抛 ObjectDisposedException，
+        // 从 catch(OperationCanceledException) 直接逃逸，动画就僵在半透明状态。
+        previous?.Cancel();
+        return current;
     }
 
-    private static void ClearToken(Control target, CancellationToken token)
+    private static void ReleaseToken(Control target, CancellationTokenSource source)
     {
         lock (AnimationTokens)
         {
-            if (!AnimationTokens.TryGetValue(target, out var current) || current.Token != token)
-                return;
-
-            AnimationTokens.Remove(target);
-            current.Dispose();
+            if (AnimationTokens.TryGetValue(target, out var current) && ReferenceEquals(current, source))
+                AnimationTokens.Remove(target);
         }
+
+        source.Dispose();
     }
 
     private static void Cancel(Control target)
     {
+        CancellationTokenSource? current;
         lock (AnimationTokens)
         {
-            if (!AnimationTokens.Remove(target, out var current))
+            if (!AnimationTokens.Remove(target, out current))
                 return;
-
-            current.Cancel();
-            current.Dispose();
         }
+
+        current?.Cancel();
     }
 }

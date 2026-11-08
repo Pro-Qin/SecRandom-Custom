@@ -29,6 +29,7 @@ public partial class QuickDrawPage : UserControl
     private CancellationTokenSource? _clickSequenceCts;
     private int _clickCount;
     private int _remainingAutoCloseSeconds;
+    private int _animationRevision;
 
     public QuickDrawPage()
     {
@@ -144,6 +145,12 @@ public partial class QuickDrawPage : UserControl
         if (_isUnloaded)
             return;
 
+        // 预览帧按 AnimationInterval（最短 50ms）连发，而一次预览动画本身要跑满同样的时长。
+        // 没有门禁时这些任务会并发改写同一批卡片的 Opacity 与 RenderTransform：
+        // 前一帧还没收尾，后一帧已经在复位，画面就停在半透明（像被压暗）或整块卡片消失只剩底板。
+        // revision 只允许最新一帧继续，旧帧在所有 await 之后自行退出。
+        var revision = ++_animationRevision;
+
         try
         {
             if (propertyName == nameof(QuickDrawPageViewModel.PreviewAnimationRevision))
@@ -151,8 +158,12 @@ public partial class QuickDrawPage : UserControl
                 CancelAutoClose();
                 _autoCloseRevision++;
                 await WaitForResultPresenterLayoutAsync();
+                if (_isUnloaded || revision != _animationRevision)
+                    return;
                 ResultPresentationBridge.RestoreHostResult(_resultPresenter);
                 if (await TryPresentAsync(DrawPresentationPhase.Preview))
+                    return;
+                if (_isUnloaded || revision != _animationRevision)
                     return;
                 await DrawAnimationHelper.PreviewAsync(
                     _resultPresenter,
@@ -164,7 +175,7 @@ public partial class QuickDrawPage : UserControl
                 var autoCloseRevision = ++_autoCloseRevision;
                 CancelAutoClose();
                 await WaitForResultPresenterLayoutAsync();
-                if (_isUnloaded || autoCloseRevision != _autoCloseRevision)
+                if (_isUnloaded || revision != _animationRevision || autoCloseRevision != _autoCloseRevision)
                     return;
                 if (await TryPresentAsync(DrawPresentationPhase.Reveal))
                 {
@@ -177,7 +188,7 @@ public partial class QuickDrawPage : UserControl
                     ViewModel.AnimationEnabled,
                     ViewModel.AnimationStyle,
                     ViewModel.AnimationDuration);
-                if (_isUnloaded || autoCloseRevision != _autoCloseRevision)
+                if (_isUnloaded || revision != _animationRevision || autoCloseRevision != _autoCloseRevision)
                     return;
                 await CloseAfterDelayAsync(autoCloseRevision);
             }
@@ -186,7 +197,7 @@ public partial class QuickDrawPage : UserControl
                 var autoCloseRevision = ++_autoCloseRevision;
                 CancelAutoClose();
                 await WaitForResultPresenterLayoutAsync();
-                if (_isUnloaded || autoCloseRevision != _autoCloseRevision)
+                if (_isUnloaded || revision != _animationRevision || autoCloseRevision != _autoCloseRevision)
                     return;
                 if (await TryPresentAsync(DrawPresentationPhase.Reveal))
                 {
@@ -199,17 +210,21 @@ public partial class QuickDrawPage : UserControl
                         true,
                         ViewModel.AnimationStyle,
                         ViewModel.AnimationDuration);
-                if (_isUnloaded || autoCloseRevision != _autoCloseRevision)
+                if (_isUnloaded || revision != _animationRevision || autoCloseRevision != _autoCloseRevision)
                     return;
                 await CloseAfterDelayAsync(autoCloseRevision);
             }
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch
         {
         }
         finally
         {
-            RaiseResultLayoutChanged();
+            if (revision == _animationRevision)
+                RaiseResultLayoutChanged();
         }
     }
 
@@ -231,11 +246,9 @@ public partial class QuickDrawPage : UserControl
 
     private static async Task WaitForResultPresenterLayoutAsync()
     {
-        for (var i = 0; i < 2; i++)
-        {
-            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render).GetTask();
-            await Task.Delay(AnimationFramePolicy.FrameIntervalMs);
-        }
+        // 结果卡片是 items 容器，重建发生在渲染通道里：等一次 Loaded 就够拿到新卡片。
+        // 原来两轮 Render 外加 2×16ms 延时，每帧多背 32ms，十二帧就排成"点下去几秒后才开始抽"。
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded).GetTask();
     }
 
     private async Task CloseAfterDelayAsync(int autoCloseRevision)
@@ -258,7 +271,11 @@ public partial class QuickDrawPage : UserControl
             }
 
             if (!_isUnloaded && autoCloseRevision == _autoCloseRevision && ReferenceEquals(_autoCloseCts, cts))
+            {
+                // 关闭前把动画残留清干净：窗口对象会被复用，留着半透明状态会让下一次显示时先闪一块暗色底板。
+                DrawAnimationHelper.ResetAll(_resultPresenter);
                 (TopLevel.GetTopLevel(this) as Window)?.Close();
+            }
         }
         catch (OperationCanceledException)
         {
