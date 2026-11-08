@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 
 <root>
     <xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata"
@@ -44,6 +44,19 @@
     </data>
     <data name="S_Author_BiliBili_D" xml:space="preserve">
         <value>访问 黎泽懿_Aionflux 的哔哩哔哩账号</value>
+    </data>
+    <!-- custom-only: Qin_zzq 特供版本作者条目 -->
+    <data name="S_Author_Qin_zzq" xml:space="preserve">
+        <value>Qin_zzq</value>
+    </data>
+    <data name="S_Author_Qin_zzq_D" xml:space="preserve">
+        <value>SecRandom 特供版本构建与维护</value>
+    </data>
+    <data name="C_CustomNotice" xml:space="preserve">
+        <value>此为 Qin_zzq 特供版本，官方版还请</value>
+    </data>
+    <data name="C_CustomNotice_Jump" xml:space="preserve">
+        <value>跳转</value>
     </data>
     <data name="S_Author_Donate" xml:space="preserve">
         <value>捐赠支持</value>

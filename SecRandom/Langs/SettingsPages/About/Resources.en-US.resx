@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 
 <root>
     <xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata"
@@ -41,6 +41,19 @@
     </data>
     <data name="S_Author_BiliBili_D" xml:space="preserve">
         <value>Visit 黎泽懿_Aionflux's BiliBili account</value>
+    </data>
+    <!-- custom-only: Qin_zzq custom build author entry -->
+    <data name="S_Author_Qin_zzq" xml:space="preserve">
+        <value>Qin_zzq</value>
+    </data>
+    <data name="S_Author_Qin_zzq_D" xml:space="preserve">
+        <value>Builds and maintains the SecRandom custom version</value>
+    </data>
+    <data name="C_CustomNotice" xml:space="preserve">
+        <value>This is the Qin_zzq custom version; for the official version, click</value>
+    </data>
+    <data name="C_CustomNotice_Jump" xml:space="preserve">
+        <value>here</value>
     </data>
     <data name="S_Author_Donate" xml:space="preserve">
         <value>Donate</value>

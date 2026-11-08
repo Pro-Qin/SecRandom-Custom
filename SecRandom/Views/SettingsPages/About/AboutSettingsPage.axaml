@@ -234,6 +234,14 @@
                                            Click="UriNavigationCommands_OnClick"
                                            CommandParameter="https://space.bilibili.com/520571577" />
 
+                <!-- custom-only: Qin_zzq 特供版本维护者条目 -->
+                <fa:FASettingsExpanderItem x:Name="S_Author_Qin_zzq"
+                                           Content="{x:Static lsa:Resources.S_Author_Qin_zzq}"
+                                           Description="{x:Static lsa:Resources.S_Author_Qin_zzq_D}"
+                                            IsClickEnabled="True" ActionIconSource="{sr:FluentIconSource {sr:Fi OpenFilled}}"
+                                           Click="UriNavigationCommands_OnClick"
+                                           CommandParameter="https://b23.tv/h5MRCn9" />
+
                 <fa:FASettingsExpanderItem x:Name="S_Author_Donate"
                                            Content="{x:Static lsa:Resources.S_Author_Donate}"
                                            Description="{x:Static lsa:Resources.S_Author_Donate_D}"
@@ -265,6 +273,22 @@
                         </WrapPanel>
                     </fa:FASettingsExpanderItem.Footer>
                 </fa:FASettingsExpanderItem>
+                <fa:FASettingsExpander.Footer>
+                    <!-- custom-only: 特供版本声明与官方版跳转 -->
+                    <WrapPanel VerticalAlignment="Center">
+                        <TextBlock Text="{x:Static lsa:Resources.C_CustomNotice}"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <HyperlinkButton Click="UriNavigationCommands_OnClick"
+                                         CommandParameter="https://github.com/SECTL/SecRandom"
+                                         Padding="2 0 0 0"
+                                         VerticalAlignment="Center">
+                            <TextBlock Text="{x:Static lsa:Resources.C_CustomNotice_Jump}" FontSize="12" />
+                        </HyperlinkButton>
+                    </WrapPanel>
+                </fa:FASettingsExpander.Footer>
             </fa:FASettingsExpander>
 
             <fa:FASettingsExpander x:Name="S_Ack"
