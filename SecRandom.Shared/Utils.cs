@@ -85,6 +85,7 @@ public static class Utils
                 throw new InvalidOperationException("The data root has already been configured.");
 
             var packageDataRoot = Path.Combine(packageRoot, "data");
+            AdoptLegacyPayloadDataRoot(packageRoot, packageDataRoot);
             if (TryVerifyWritable(packageDataRoot, out var packageError))
             {
                 _configuredDataRoot = Path.GetFullPath(packageDataRoot);
@@ -116,6 +117,46 @@ public static class Utils
             var fallbackResult = new DesktopDataRootPreparationResult(false, true, _configuredDataRoot, packageError);
             _desktopPreparation = fallbackResult;
             return fallbackResult;
+        }
+    }
+
+    /// <summary>
+    ///     Portable packages before the package-root fix resolved their data root inside the running
+    ///     <c>app-*</c> payload. Move such a payload data set beside the launcher once, so a package
+    ///     upgrade keeps the same lists, history and settings instead of starting empty.
+    /// </summary>
+    private static void AdoptLegacyPayloadDataRoot(string packageRoot, string packageDataRoot)
+    {
+        try
+        {
+            if (Directory.Exists(packageDataRoot) && Directory.EnumerateFileSystemEntries(packageDataRoot).Any())
+                return;
+
+            var legacyRoot = Directory.EnumerateDirectories(packageRoot, "app-*")
+                .Select(path => Path.Combine(path, "data"))
+                .Where(path => Directory.Exists(path) && Directory.EnumerateFileSystemEntries(path).Any())
+                .OrderByDescending(Directory.GetLastWriteTimeUtc)
+                .FirstOrDefault();
+            if (legacyRoot is null)
+                return;
+
+            Directory.CreateDirectory(packageDataRoot);
+            foreach (var entry in Directory.EnumerateFileSystemEntries(legacyRoot))
+            {
+                var target = Path.Combine(packageDataRoot, Path.GetFileName(entry));
+                if (Directory.Exists(entry))
+                    Directory.Move(entry, target);
+                else
+                    File.Move(entry, target, overwrite: true);
+            }
+        }
+        catch (IOException)
+        {
+            // A failed adoption keeps the package root data untouched; the payload copy stays valid.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Same as above: never block startup because the legacy copy could not be moved.
         }
     }
 
@@ -265,7 +306,7 @@ public static class Utils
 
     private static string ResolvePackageRoot()
     {
-        var appDirectory = Path.GetFullPath(AppContext.BaseDirectory);
+        var appDirectory = NormalizeDirectory(AppContext.BaseDirectory);
         var configuredRoot = Environment.GetEnvironmentVariable(PackageRootEnvironmentVariable);
         if (IsPortablePackageRoot(configuredRoot, appDirectory))
             return Path.GetFullPath(configuredRoot!);
@@ -285,7 +326,7 @@ public static class Utils
 
     private static bool IsPortablePackage(string packageRoot)
     {
-        var appDirectory = Path.GetFullPath(AppContext.BaseDirectory);
+        var appDirectory = NormalizeDirectory(AppContext.BaseDirectory);
         return IsPortablePackageRoot(packageRoot, appDirectory)
                && HasPortablePayloadKind(appDirectory);
     }
@@ -356,17 +397,29 @@ public static class Utils
         if (string.IsNullOrWhiteSpace(candidate) || !Directory.Exists(candidate))
             return false;
 
-        var root = Path.GetFullPath(candidate);
-        var normalizedAppDirectory = Path.GetFullPath(appDirectory);
+        var root = NormalizeDirectory(candidate);
+        var normalizedAppDirectory = NormalizeDirectory(appDirectory);
         var parent = Directory.GetParent(normalizedAppDirectory)?.FullName;
         if (!string.Equals(root, parent, OperatingSystem.IsWindows()
                 ? StringComparison.OrdinalIgnoreCase
                 : StringComparison.Ordinal))
             return false;
 
-        var appDirectoryName = Path.GetFileName(normalizedAppDirectory.TrimEnd(Path.DirectorySeparatorChar));
+        var appDirectoryName = Path.GetFileName(normalizedAppDirectory);
         return appDirectoryName.StartsWith("app-", StringComparison.Ordinal)
                && File.Exists(Path.Combine(normalizedAppDirectory, "SecRandom.package.json"));
+    }
+
+    /// <summary>
+    ///     Normalizes a directory path to its full form without a trailing separator.
+    ///     <see cref="AppContext.BaseDirectory" /> always ends with one, and <see cref="Directory.GetParent(string)" />
+    ///     answers the directory itself for such a path, which would hide the portable package root.
+    /// </summary>
+    private static string NormalizeDirectory(string path)
+    {
+        var full = Path.GetFullPath(path);
+        var trimmed = full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return trimmed.Length == 0 ? full : trimmed;
     }
 
     internal static void ResetDataRootForTests()
