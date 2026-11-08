@@ -17,6 +17,10 @@ concurrency:
   group: build-windows-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # 更新清单签名私钥。未配置时只产出手工可用的 zip，跳过清单签名。
+  UPDATE_MANIFEST_PRIVATE_KEY_PEM_BASE64: ${{ secrets.UPDATE_MANIFEST_PRIVATE_KEY_PEM_BASE64 }}
+
 jobs:
   build:
     name: Build_win-x64
@@ -73,17 +77,97 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         run: |
-          $zip = "secrandom-win-x64-$env:GITHUB_REF_NAME.zip"
-          Compress-Archive -Path publish/* -DestinationPath $zip -CompressionLevel Optimal
-          "ZIP_NAME=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $tag = $env:GITHUB_REF_NAME
+          $zipName = "SecRandom-$tag-win-x64-portable-full.zip"
+          $zipPath = Join-Path $env:RUNNER_TEMP $zipName
+          Compress-Archive -Path publish/* -DestinationPath $zipPath -CompressionLevel Optimal
+          "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "ZIP_PATH=$zipPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "zip: $zipName ($((Get-Item $zipPath).Length) bytes)"
+
+      - name: Generate signed update manifest
+        if: startsWith(github.ref, 'refs/tags/v') && env.UPDATE_MANIFEST_PRIVATE_KEY_PEM_BASE64 != ''
+        shell: pwsh
+        run: |
+          $privateKeyPath = Join-Path $env:RUNNER_TEMP 'secrandom-update-ed25519.pem'
+          $publicDerPath = Join-Path $env:RUNNER_TEMP 'secrandom-update-ed25519-public.der'
+          try {
+            [IO.File]::WriteAllBytes($privateKeyPath, [Convert]::FromBase64String(($env:UPDATE_MANIFEST_PRIVATE_KEY_PEM_BASE64 -replace '[^A-Za-z0-9+/=]', '')))
+            & openssl pkey -in $privateKeyPath -pubout -outform DER -out $publicDerPath
+            if ($LASTEXITCODE -ne 0) { throw "OpenSSL Ed25519 public-key export failed with exit code $LASTEXITCODE." }
+            $publicDer = [IO.File]::ReadAllBytes($publicDerPath)
+            if ($publicDer.Length -lt 32) { throw 'The update-signing public key is invalid.' }
+            $derivedPublicKey = [Convert]::ToBase64String($publicDer[($publicDer.Length - 32)..($publicDer.Length - 1)])
+            $embeddedPublicKey = (Get-Content -LiteralPath 'SecRandom/Assets/Updates/release-public-key.txt' -Raw).Trim()
+            if ($derivedPublicKey -cne $embeddedPublicKey) {
+              throw 'UPDATE_MANIFEST_PRIVATE_KEY_PEM_BASE64 does not match SecRandom/Assets/Updates/release-public-key.txt.'
+            }
+
+            $tag = $env:GITHUB_REF_NAME
+            $zip = Get-Item -LiteralPath $env:ZIP_PATH
+            $artifacts = @(
+              [ordered]@{
+                id          = 'windows-x64-portable-zip-self-contained'
+                os          = 'windows'
+                arch        = 'x64'
+                kind        = 'portable-zip'
+                runtimeKind = 'self-contained'
+                assetName   = $env:ZIP_NAME
+                byteLength  = $zip.Length
+                sha512      = (Get-FileHash -LiteralPath $zip.FullName -Algorithm SHA512).Hash
+              }
+            )
+            $manifest = [ordered]@{
+              schemaVersion = 1
+              product       = 'SecRandom'
+              channel       = 'release'
+              tag           = $tag
+              version       = $tag.TrimStart('v')
+              publishedAt   = [DateTimeOffset]::UtcNow.ToString('O')
+              artifacts     = $artifacts
+            }
+            $manifestPath = Join-Path $env:RUNNER_TEMP 'SecRandom-update-manifest.json'
+            $signaturePath = Join-Path $env:RUNNER_TEMP 'SecRandom-update-manifest.sig'
+            $manifest | ConvertTo-Json -Depth 5 -Compress | Set-Content -LiteralPath $manifestPath -Encoding utf8NoBOM -NoNewline
+            & openssl pkeyutl -sign -rawin -inkey $privateKeyPath -in $manifestPath -out $signaturePath
+            if ($LASTEXITCODE -ne 0) { throw "OpenSSL Ed25519 signing failed with exit code $LASTEXITCODE." }
+            "MANIFEST_PATH=$manifestPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "SIGNATURE_PATH=$signaturePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "signed manifest for $tag"
+          }
+          finally {
+            Remove-Item $privateKeyPath -Force -ErrorAction SilentlyContinue
+            Remove-Item $publicDerPath -Force -ErrorAction SilentlyContinue
+          }
 
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.ZIP_NAME }}
+          files: |
+            ${{ env.ZIP_PATH }}
+            ${{ env.MANIFEST_PATH }}
+            ${{ env.SIGNATURE_PATH }}
           name: SecRandom 特供版 ${{ github.ref_name }}
           generate_release_notes: true
           body: |
             Qin_zzq 特供构建 ${{ github.ref_name }}
+            更新源：Pro-Qin/SecRandom-Custom
             官方版请前往 https://github.com/SECTL/SecRandom
+
+      - name: Point release metadata at this tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $path = 'metadata.yaml'
+          $content = Get-Content -LiteralPath $path -Raw
+          $updated = [regex]::Replace($content, '(?m)^(  release:\r?\n    tag: )\S+$', "${1}$tag")
+          if ($updated -ceq $content) { "metadata.yaml 的 release 通道已经指向 $tag"; exit 0 }
+          [IO.File]::WriteAllText($path, $updated, [Text.UTF8Encoding]::new($false))
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add $path
+          git commit -m "chore: release $tag [skip ci]"
+          git push origin HEAD:master
