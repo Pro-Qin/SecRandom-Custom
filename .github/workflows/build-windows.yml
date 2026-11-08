@@ -1,0 +1,89 @@
+name: Build Windows
+
+# 特供仓库的唯一构建入口。本机只装 .NET 运行时，构建全部搬到 GitHub Actions。
+# 上游的 build_publish.yml / build_ios.yml / codeQL.yml 依赖上游 secrets、macOS 与多平台
+# workload，在特供仓库里注定失败，已按仓库既有惯例归档为 *.bak，不再随 push 触发。
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build_win-x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # vendors/EdgeTtsSharp 是子模块，不递归检出会直接 CS2001
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Show SDK info
+        shell: pwsh
+        run: |
+          dotnet --version
+          dotnet --list-sdks
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore SecRandom.Desktop/SecRandom.Desktop.csproj -r win-x64 -p:BuildInParallel=false
+
+      - name: Publish
+        shell: pwsh
+        run: >
+          dotnet publish SecRandom.Desktop/SecRandom.Desktop.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:BuildInParallel=false -p:UseSharedCompilation=false
+          -o publish
+
+      - name: Verify publish output
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path publish -Filter *.exe -File
+          if (-not $exe) { throw 'publish 目录中没有任何 exe，发布失败' }
+          "publish 文件数: $((Get-ChildItem -Path publish -File -Recurse | Measure-Object).Count)"
+          $exe | ForEach-Object { "入口: $($_.Name)" }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: secrandom-win-x64
+          path: publish
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Package zip
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $zip = "secrandom-win-x64-$env:GITHUB_REF_NAME.zip"
+          Compress-Archive -Path publish/* -DestinationPath $zip -CompressionLevel Optimal
+          "ZIP_NAME=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_NAME }}
+          name: SecRandom 特供版 ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            Qin_zzq 特供构建 ${{ github.ref_name }}
+            官方版请前往 https://github.com/SECTL/SecRandom
