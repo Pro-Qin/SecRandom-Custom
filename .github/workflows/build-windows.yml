@@ -45,25 +45,55 @@ jobs:
           dotnet --version
           dotnet --list-sdks
 
+      # 便携包布局必须与 SecRandom.Launcher / UpdateCenterService.DeployPortableAsync 对齐：
+      #   <root>/SecRandomLauncher.exe
+      #   <root>/app-v<version>-0/SecRandom.Desktop.exe + SecRandom.package.json
+      - name: Resolve package version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/v*') { $version = $env:GITHUB_REF_NAME }
+          else { $version = "v0.0.0-dev$($env:GITHUB_RUN_NUMBER)" }
+          "PKG_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "APP_DIR=publish/app-$version-0" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "package version: $version"
+
       - name: Restore
         shell: pwsh
-        run: dotnet restore SecRandom.Desktop/SecRandom.Desktop.csproj -r win-x64 -p:BuildInParallel=false
+        run: |
+          dotnet restore SecRandom.Desktop/SecRandom.Desktop.csproj -r win-x64 -p:BuildInParallel=false
+          if ($LASTEXITCODE -ne 0) { throw "restore SecRandom.Desktop failed" }
+          dotnet restore SecRandom.Launcher/SecRandom.Launcher.csproj -r win-x64
+          if ($LASTEXITCODE -ne 0) { throw "restore SecRandom.Launcher failed" }
 
-      - name: Publish
+      - name: Publish application
         shell: pwsh
-        run: >
-          dotnet publish SecRandom.Desktop/SecRandom.Desktop.csproj
-          -c Release -r win-x64 --self-contained true
-          -p:BuildInParallel=false -p:UseSharedCompilation=false
-          -o publish
+        run: |
+          $assemblyVersion = $env:PKG_VERSION.TrimStart('v', 'V')
+          dotnet publish SecRandom.Desktop/SecRandom.Desktop.csproj -c Release -r win-x64 --self-contained true -p:BuildInParallel=false -p:UseSharedCompilation=false -p:Version=$assemblyVersion -o $env:APP_DIR
+          if ($LASTEXITCODE -ne 0) { throw "publish SecRandom.Desktop failed" }
+
+      - name: Publish launcher
+        shell: pwsh
+        run: |
+          $assemblyVersion = $env:PKG_VERSION.TrimStart('v', 'V')
+          dotnet publish SecRandom.Launcher/SecRandom.Launcher.csproj -c Release -r win-x64 --self-contained true -p:UseAppHost=true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -p:Version=$assemblyVersion -o publish
+          if ($LASTEXITCODE -ne 0) { throw "publish SecRandom.Launcher failed" }
+
+      - name: Write portable package marker
+        shell: pwsh
+        run: |
+          @{ schemaVersion = 1; product = 'SecRandom'; rid = 'win-x64'; packageKind = 'portable-zip'; runtimeKind = 'self-contained' } |
+            ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $env:APP_DIR 'SecRandom.package.json') -Encoding utf8NoBOM
 
       - name: Verify publish output
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path publish -Filter *.exe -File
-          if (-not $exe) { throw 'publish 目录中没有任何 exe，发布失败' }
-          "publish 文件数: $((Get-ChildItem -Path publish -File -Recurse | Measure-Object).Count)"
-          $exe | ForEach-Object { "入口: $($_.Name)" }
+          $appDir = $env:APP_DIR
+          if (-not (Test-Path (Join-Path $appDir 'SecRandom.Desktop.exe'))) { throw "app 目录缺少 SecRandom.Desktop.exe" }
+          if (-not (Test-Path (Join-Path $appDir 'SecRandom.package.json'))) { throw "app 目录缺少 SecRandom.package.json" }
+          if (-not (Test-Path 'publish/SecRandomLauncher.exe')) { throw "便携根目录缺少 SecRandomLauncher.exe" }
+          "app 文件数: $((Get-ChildItem -Path $appDir -File -Recurse | Measure-Object).Count)"
+          "root 条目: $((Get-ChildItem -Path publish | Select-Object -ExpandProperty Name) -join ', ')"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -77,10 +107,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         run: |
-          $tag = $env:GITHUB_REF_NAME
-          $zipName = "SecRandom-$tag-win-x64-portable-full.zip"
+          $zipName = "SecRandom-$env:PKG_VERSION-win-x64-portable-full.zip"
           $zipPath = Join-Path $env:RUNNER_TEMP $zipName
-          Compress-Archive -Path publish/* -DestinationPath $zipPath -CompressionLevel Optimal
+          Compress-Archive -Path publish/* -DestinationPath $zipPath -CompressionLevel Optimal -Force
           "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "ZIP_PATH=$zipPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "zip: $zipName ($((Get-Item $zipPath).Length) bytes)"
@@ -103,7 +132,6 @@ jobs:
               throw 'UPDATE_MANIFEST_PRIVATE_KEY_PEM_BASE64 does not match SecRandom/Assets/Updates/release-public-key.txt.'
             }
 
-            $tag = $env:GITHUB_REF_NAME
             $zip = Get-Item -LiteralPath $env:ZIP_PATH
             $artifacts = @(
               [ordered]@{
@@ -121,8 +149,8 @@ jobs:
               schemaVersion = 1
               product       = 'SecRandom'
               channel       = 'release'
-              tag           = $tag
-              version       = $tag.TrimStart('v')
+              tag           = $env:PKG_VERSION
+              version       = $env:PKG_VERSION.TrimStart('v', 'V')
               publishedAt   = [DateTimeOffset]::UtcNow.ToString('O')
               artifacts     = $artifacts
             }
@@ -133,7 +161,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "OpenSSL Ed25519 signing failed with exit code $LASTEXITCODE." }
             "MANIFEST_PATH=$manifestPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
             "SIGNATURE_PATH=$signaturePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-            "signed manifest for $tag"
+            "signed manifest for $env:PKG_VERSION"
           }
           finally {
             Remove-Item $privateKeyPath -Force -ErrorAction SilentlyContinue
@@ -160,7 +188,7 @@ jobs:
         shell: pwsh
         continue-on-error: true
         run: |
-          $tag = $env:GITHUB_REF_NAME
+          $tag = $env:PKG_VERSION
           $path = 'metadata.yaml'
           $content = Get-Content -LiteralPath $path -Raw
           $updated = [regex]::Replace($content, '(?m)^(  release:\r?\n    tag: )\S+$', "${1}$tag")
