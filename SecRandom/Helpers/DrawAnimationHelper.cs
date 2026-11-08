@@ -16,6 +16,10 @@ namespace SecRandom.Helpers;
 internal static class DrawAnimationHelper
 {
     private const string ResultAnimationClass = "result-animation-item";
+
+    // 入场不再从全透明起步：0 起始会让卡片先以「只有底板」的形态存在若干帧（肉眼看到白框）。
+    private const double PreviewStartOpacity = 0.55;
+    private const double RevealStartOpacity = 0.35;
     private static readonly Dictionary<Control, CancellationTokenSource> AnimationTokens = [];
 
     public static async Task PreviewAsync(Control? target, DrawAnimationStyleMode style, int durationMs)
@@ -38,13 +42,12 @@ internal static class DrawAnimationHelper
             return;
         }
 
+        // 卡片容器还没生成（ItemsControl 尚未测量）时什么都不做：
+        // 对整块面板做 0→1 淡入只会在下一帧留下一块半透明底板，看起来就是「透明度莫名降低」。
         if (resultItems.Count == 0)
-        {
-            await AnimateAsync(target, style, durationMs).ConfigureAwait(true);
             return;
-        }
 
-        var tasks = resultItems.Select(item => AnimateAsync(item, style, durationMs));
+        var tasks = resultItems.Select(item => AnimateAsync(item, style, durationMs, 0, PreviewStartOpacity));
         await Task.WhenAll(tasks).ConfigureAwait(true);
     }
 
@@ -73,7 +76,8 @@ internal static class DrawAnimationHelper
             item,
             style,
             durationMs,
-            Math.Min(index * 45, 220)));
+            Math.Min(index * 45, 220),
+            RevealStartOpacity));
         try
         {
             await Task.WhenAll(tasks).ConfigureAwait(true);
@@ -120,12 +124,16 @@ internal static class DrawAnimationHelper
             .ConfigureAwait(true);
     }
 
-    private static async Task AnimateAsync(Control target, DrawAnimationStyleMode style, int durationMs, int delayMs = 0)
+    private static async Task AnimateAsync(
+        Control target,
+        DrawAnimationStyleMode style,
+        int durationMs,
+        int delayMs = 0,
+        double startOpacity = 1)
     {
         var source = ReplaceToken(target);
         var token = source.Token;
         var transformGroup = BuildTransformGroup(style);
-        var startOpacity = ResolveStartOpacity(style);
         try
         {
             await ApplyAnimationFrameAsync(target, transformGroup, style, 0, startOpacity).ConfigureAwait(true);
@@ -146,8 +154,7 @@ internal static class DrawAnimationHelper
         }
         catch (OperationCanceledException)
         {
-            // 被更新的预览帧或揭晓抢占：这里刻意不复位。
-            // 继任者的第一帧会立刻写入自己的起始值，抢先复位只会闪一下满透明度。
+            // 被更新的预览帧或揭晓抢占：视觉状态已由 ReplaceToken 复位，这里直接退出。
             return;
         }
         finally
@@ -155,7 +162,7 @@ internal static class DrawAnimationHelper
             ReleaseToken(target, source);
         }
 
-        ResetTarget(target);
+        ApplyNeutralState(target);
     }
 
     private static Task ApplyAnimationFrameAsync(
@@ -271,6 +278,12 @@ internal static class DrawAnimationHelper
     private static void ResetTarget(Control target)
     {
         Cancel(target);
+        ApplyNeutralState(target);
+    }
+
+    /// <summary>只把视觉属性写回中性态，不动任何令牌。</summary>
+    private static void ApplyNeutralState(Control target)
+    {
         target.Opacity = 1;
         target.RenderTransformOrigin = RelativePoint.Center;
         target.RenderTransform = null;
@@ -288,10 +301,19 @@ internal static class DrawAnimationHelper
             AnimationTokens[target] = current;
         }
 
+        if (previous is null)
+            return current;
+
         // 只取消、绝不 Dispose：旧动画可能正停在 Task.Delay 上，
         // Dispose 一个仍被 await 的 token 会抛 ObjectDisposedException，
         // 从 catch(OperationCanceledException) 直接逃逸，动画就僵在半透明状态。
-        previous?.Cancel();
+        previous.Cancel();
+
+        // 取消即复位。把"清干净"寄希望于继任者第一帧并不可靠：继任者要经过一次
+        // Dispatcher 往返才写值，中间那一帧就是用户看到的半透明残留。
+        // 这里只改视觉属性、不碰 token（当前 token 已经换成新的那个）。
+        ApplyNeutralState(target);
+
         return current;
     }
 

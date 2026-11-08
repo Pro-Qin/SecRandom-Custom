@@ -746,6 +746,123 @@ namespace SecRandom.Langs.SettingsPages.FloatingWindow {
         /// <summary>
         ///   Looks up a localized string similar to 无法打开自定义按钮页面.
         /// </summary>
+        /// <summary>
+        ///   Looks up a localized string similar to 悬浮窗圆角.
+        /// </summary>
+        public static string S_Display_CornerRadius {
+            get {
+                return ResourceManager.GetString("S_Display_CornerRadius", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 悬浮窗边框的圆角半径，0 表示直角，最大 32.
+        /// </summary>
+        public static string S_Display_CornerRadius_D {
+            get {
+                return ResourceManager.GetString("S_Display_CornerRadius_D", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 控件内文字与图标.
+        /// </summary>
+        public static string S_Display_ButtonMetrics {
+            get {
+                return ResourceManager.GetString("S_Display_ButtonMetrics", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 单独调整悬浮窗控件内的文字与图标像素大小，0 表示跟随控件尺寸自动缩放.
+        /// </summary>
+        public static string S_Display_ButtonMetrics_D {
+            get {
+                return ResourceManager.GetString("S_Display_ButtonMetrics_D", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 控件文字大小.
+        /// </summary>
+        public static string S_Display_ButtonFontSize {
+            get {
+                return ResourceManager.GetString("S_Display_ButtonFontSize", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 控件图标大小.
+        /// </summary>
+        public static string S_Display_ButtonIconSize {
+            get {
+                return ResourceManager.GetString("S_Display_ButtonIconSize", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 控件文字.
+        /// </summary>
+        public static string S_Buttons_Texts {
+            get {
+                return ResourceManager.GetString("S_Buttons_Texts", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 自定义各控件显示的说明文字，留空使用默认名称，最多 12 字.
+        /// </summary>
+        public static string S_Buttons_Texts_D {
+            get {
+                return ResourceManager.GetString("S_Buttons_Texts_D", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 点名按钮文字.
+        /// </summary>
+        public static string S_Buttons_Text_RollCall {
+            get {
+                return ResourceManager.GetString("S_Buttons_Text_RollCall", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 闪抽按钮文字.
+        /// </summary>
+        public static string S_Buttons_Text_QuickDraw {
+            get {
+                return ResourceManager.GetString("S_Buttons_Text_QuickDraw", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 抽奖按钮文字.
+        /// </summary>
+        public static string S_Buttons_Text_Lottery {
+            get {
+                return ResourceManager.GetString("S_Buttons_Text_Lottery", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 计时按钮文字.
+        /// </summary>
+        public static string S_Buttons_Text_Timer {
+            get {
+                return ResourceManager.GetString("S_Buttons_Text_Timer", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 留空使用默认.
+        /// </summary>
+        public static string S_Buttons_Text_Hint {
+            get {
+                return ResourceManager.GetString("S_Buttons_Text_Hint", resourceCulture);
+            }
+        }
+
         public static string M_Buttons_CustomOpenFailed {
             get {
                 return ResourceManager.GetString("M_Buttons_CustomOpenFailed", resourceCulture);

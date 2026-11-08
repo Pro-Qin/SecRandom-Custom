@@ -246,8 +246,18 @@ public sealed partial class QuickDrawPageViewModel : ViewModelBase, IDisposable
         }
 
         const int count = 1;
-        ResultItems.Clear();
-        IsResultVisible = false;
+        // 先铺好预览首帧再切到可见：先 Clear 再置 IsResultVisible=false，会让预览首帧到达前留下整帧空白，
+        // 看起来就是「点下去停一下什么都没显示」。
+        if (!skipPreview && AnimationSettings.Animation != AnimationMode.NoAnimation)
+        {
+            ReplaceResults(BuildPreviewFrame(candidates, count));
+            IsResultVisible = true;
+        }
+        else
+        {
+            ResultItems.Clear();
+            IsResultVisible = false;
+        }
         // 关闭后抽取期间不显示"正在抽取"：动画已经在动，多一行字反而会在结果落定前跳一次版
         StatusText = Config.QuickDrawSettings.ShowDrawingStatus ? QuickDrawResources.M_Drawing : string.Empty;
         _notificationAutoCloseTime = null;
@@ -628,7 +638,7 @@ public sealed partial class QuickDrawPageViewModel : ViewModelBase, IDisposable
         {
             for (var i = 0; i < iterations && !token.IsCancellationRequested; i++)
             {
-                ReplaceResults(candidates.OrderBy(_ => Random.Shared.Next()).Take(count).ToList());
+                ReplaceResults(BuildPreviewFrame(candidates, count));
                 IsResultVisible = true;
                 TriggerPreviewAnimation();
                 try
@@ -671,8 +681,20 @@ public sealed partial class QuickDrawPageViewModel : ViewModelBase, IDisposable
         PreviewAnimationRevision++;
     }
 
+    // 预览每帧的候选快照：洗牌只用 Random.Shared，绝不碰抽取使用的注入随机源。
+    private static List<Student> BuildPreviewFrame(IReadOnlyList<Student> candidates, int count)
+        => candidates.OrderBy(_ => Random.Shared.Next()).Take(count).ToList();
+
     private void ReplaceResults(IReadOnlyList<Student> students)
     {
+        // 数量没变就原地更新：预览每帧换人时保留卡片容器，避免 ItemsControl 重建导致的空窗与动画错位。
+        if (ResultItems.Count == students.Count)
+        {
+            for (var i = 0; i < students.Count; i++)
+                ResultItems[i].CopyFrom(CreateResultItem(students[i]));
+            return;
+        }
+
         ResultItems.Clear();
         foreach (var student in students)
             ResultItems.Add(CreateResultItem(student));
@@ -759,41 +781,39 @@ public sealed partial class QuickDrawPageViewModel : ViewModelBase, IDisposable
     {
         var weight = BuildDisplayWeight(student);
         var accentBrush = ResolveAccentBrush();
-        return new QuickDrawResultItem(
-            FormatStudent(student),
-            student.Tags,
-            DisplaySettings.ShowTags && !string.IsNullOrWhiteSpace(student.Tags),
-            DisplaySettings.DisplayStyle == DisplayStyleMode.Card,
-            accentBrush,
-            DrawColorHelper.ResolveTextBrush(accentBrush, Config.Appearance.Theme),
-            DisplaySettings.ShowWeightTransparency,
-            $"权重 {weight:0.##}",
-            BuildResultOpacity(weight),
-            BuildImage(student),
-            StudentImageSettings.StudentImage,
-            StudentImageSettings.StudentImagePosition,
-            AvatarInitialResolver.Resolve(student.Name, student.Id),
-            StudentImageSettings.StudentImageSize);
+        return new QuickDrawResultItem
+        {
+            DisplayText = FormatStudent(student),
+            Tags = student.Tags,
+            IsTagsVisible = DisplaySettings.ShowTags && !string.IsNullOrWhiteSpace(student.Tags),
+            IsCardStyle = DisplaySettings.DisplayStyle == DisplayStyleMode.Card,
+            AccentBrush = accentBrush,
+            TextBrush = DrawColorHelper.ResolveTextBrush(accentBrush, Config.Appearance.Theme),
+            IsWeightVisible = DisplaySettings.ShowWeightTransparency,
+            WeightText = $"权重 {weight:0.##}",
+            Opacity = BuildResultOpacity(weight),
+            Image = BuildImage(student),
+            IsImageEnabled = StudentImageSettings.StudentImage,
+            ImagePosition = StudentImageSettings.StudentImagePosition,
+            Initial = AvatarInitialResolver.Resolve(student.Name, student.Id),
+            ImageSize = StudentImageSettings.StudentImageSize
+        };
     }
 
     private QuickDrawResultItem CreateNotificationResultItem(string item)
     {
         var accentBrush = ResolveAccentBrush();
-        return new QuickDrawResultItem(
-            item,
-            string.Empty,
-            false,
-            DisplaySettings.DisplayStyle == DisplayStyleMode.Card,
-            accentBrush,
-            DrawColorHelper.ResolveTextBrush(accentBrush, Config.Appearance.Theme),
-            false,
-            string.Empty,
-            1,
-            null,
-            false,
-            StudentImagePositionMode.Top,
-            item.Trim()[0].ToString(),
-            StudentImageSettings.StudentImageSize);
+        return new QuickDrawResultItem
+        {
+            DisplayText = item,
+            IsCardStyle = DisplaySettings.DisplayStyle == DisplayStyleMode.Card,
+            AccentBrush = accentBrush,
+            TextBrush = DrawColorHelper.ResolveTextBrush(accentBrush, Config.Appearance.Theme),
+            Opacity = 1,
+            ImagePosition = StudentImagePositionMode.Top,
+            Initial = item.Trim()[0].ToString(),
+            ImageSize = StudentImageSettings.StudentImageSize
+        };
     }
 
     private string FormatStudent(Student student)
@@ -928,22 +948,53 @@ public sealed partial class QuickDrawPageViewModel : ViewModelBase, IDisposable
     }
 }
 
-public sealed record QuickDrawResultItem(
-    string DisplayText,
-    string Tags,
-    bool IsTagsVisible,
-    bool IsCardStyle,
-    IBrush? AccentBrush,
-    IBrush TextBrush,
-    bool IsWeightVisible,
-    string WeightText,
-    double Opacity,
-    Bitmap? Image,
-    bool IsImageEnabled,
-    StudentImagePositionMode ImagePosition,
-    string Initial,
-    int ImageSize)
+/// <summary>
+///     结果卡片的一行数据。
+/// </summary>
+/// <remarks>
+///     可变而不是 <c>record</c>：预览阶段每 <c>AnimationInterval</c> 就会换一批名字，若每次都
+///     <c>Clear</c> + <c>Add</c>，<c>ItemsControl</c> 会销毁并重新生成本帧的卡片容器，中间那一帧只剩
+///     底板（看起来是一块白框），而且还在跑的入场动画会作用在马上被丢弃的控件上，
+///     于是画面停在半透明。复用条目、只更新字段，容器就不会被换掉。
+/// </remarks>
+public sealed partial class QuickDrawResultItem : ObservableObject
 {
+    [ObservableProperty] private string _displayText = string.Empty;
+    [ObservableProperty] private string _tags = string.Empty;
+    [ObservableProperty] private bool _isTagsVisible;
+    [ObservableProperty] private bool _isCardStyle;
+    [ObservableProperty] private IBrush? _accentBrush;
+    [ObservableProperty] private IBrush _textBrush = Brushes.White;
+    [ObservableProperty] private bool _isWeightVisible;
+    [ObservableProperty] private string _weightText = string.Empty;
+    [ObservableProperty] private double _opacity = 1;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsImageVisible))]
+    [NotifyPropertyChangedFor(nameof(IsPlaceholderVisible))]
+    [NotifyPropertyChangedFor(nameof(IsImageBeforeText))]
+    [NotifyPropertyChangedFor(nameof(IsImageAfterText))]
+    private Bitmap? _image;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsImageVisible))]
+    [NotifyPropertyChangedFor(nameof(IsPlaceholderVisible))]
+    [NotifyPropertyChangedFor(nameof(IsImageBeforeText))]
+    [NotifyPropertyChangedFor(nameof(IsImageAfterText))]
+    private bool _isImageEnabled;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ImageLayoutOrientation))]
+    [NotifyPropertyChangedFor(nameof(IsImageBeforeText))]
+    [NotifyPropertyChangedFor(nameof(IsImageAfterText))]
+    private StudentImagePositionMode _imagePosition;
+
+    [ObservableProperty] private string _initial = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(InitialFontSize))]
+    private int _imageSize;
+
     public bool IsImageVisible => IsImageEnabled && Image is not null;
     public bool IsPlaceholderVisible => IsImageEnabled && Image is null;
     public double InitialFontSize => ImageSize * 0.5;
@@ -952,4 +1003,23 @@ public sealed record QuickDrawResultItem(
         : Orientation.Vertical;
     public bool IsImageBeforeText => IsImageEnabled && ImagePosition is StudentImagePositionMode.Left or StudentImagePositionMode.Top;
     public bool IsImageAfterText => IsImageEnabled && ImagePosition is StudentImagePositionMode.Right or StudentImagePositionMode.Bottom;
+
+    /// <summary>就地同步另一份快照的全部字段，供预览帧复用已有条目。</summary>
+    internal void CopyFrom(QuickDrawResultItem source)
+    {
+        DisplayText = source.DisplayText;
+        Tags = source.Tags;
+        IsTagsVisible = source.IsTagsVisible;
+        IsCardStyle = source.IsCardStyle;
+        AccentBrush = source.AccentBrush;
+        TextBrush = source.TextBrush;
+        IsWeightVisible = source.IsWeightVisible;
+        WeightText = source.WeightText;
+        Opacity = source.Opacity;
+        Image = source.Image;
+        IsImageEnabled = source.IsImageEnabled;
+        ImagePosition = source.ImagePosition;
+        Initial = source.Initial;
+        ImageSize = source.ImageSize;
+    }
 }

@@ -451,6 +451,22 @@ public static class ControlSettingsLabels
             "显示在悬浮窗上的自定义文字内容", "Custom text shown on the floating window",
             "フローティングウィンドウに表示するカスタムテキスト"),
         ["floating_window_text_font_size"] = R(FloatingWindow, "S_Display_CustomTextSize"),
+        ["floating_window_corner_radius"] = R(FloatingWindow, "S_Display_CornerRadius"),
+        ["floating_window_button_font_size"] = R(FloatingWindow, "S_Display_ButtonFontSize"),
+        ["floating_window_button_icon_size"] = R(FloatingWindow, "S_Display_ButtonIconSize"),
+        // 控件文案：左列设置页文案可借，内容本身就地三语。
+        ["roll_call_button_text"] = L(
+            "点名控件文字", "Roll-call control label", "点呼操作の文字",
+            "悬浮窗点名控件显示的文字", "Label shown on the roll-call control", "点呼操作に表示する文字"),
+        ["quick_draw_button_text"] = L(
+            "闪抽控件文字", "Quick-draw control label", "クイック抽選操作の文字",
+            "悬浮窗闪抽控件显示的文字", "Label shown on the quick-draw control", "クイック抽選操作に表示する文字"),
+        ["lottery_button_text"] = L(
+            "抽奖控件文字", "Lottery control label", "抽選操作の文字",
+            "悬浮窗抽奖控件显示的文字", "Label shown on the lottery control", "抽選操作に表示する文字"),
+        ["timer_button_text"] = L(
+            "计时控件文字", "Timer control label", "タイマー操作の文字",
+            "悬浮窗计时控件显示的文字", "Label shown on the timer control", "タイマー操作に表示する文字"),
 
         // ---------------- 联动
         ["data_source"] = R(Linkage, "S_External_DataSource"),

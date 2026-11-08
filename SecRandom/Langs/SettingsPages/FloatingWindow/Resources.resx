@@ -244,12 +244,51 @@
     <value>自定义文字</value>
   </data>
   <data name="S_Display_CustomText_D" xml:space="preserve">
-    <value>在悬浮窗按钮上方显示一行自定义文字，过长时自动省略（最多 120 字）</value>
+    <value>在悬浮窗按钮上方显示一行说明文字（上侧文字），过长时自动省略（最多 120 字）</value>
   </data>
   <data name="S_Display_CustomTextSize" xml:space="preserve">
     <value>自定义文字字号</value>
   </data>
   <data name="S_Display_CustomTextSize_D" xml:space="preserve">
     <value>自定义文字的像素字号，0 表示跟随悬浮窗尺寸自动缩放</value>
+  </data>
+  <data name="S_Display_CornerRadius" xml:space="preserve">
+    <value>悬浮窗圆角</value>
+  </data>
+  <data name="S_Display_CornerRadius_D" xml:space="preserve">
+    <value>悬浮窗边框的圆角半径，0 表示直角，最大 32</value>
+  </data>
+  <data name="S_Display_ButtonMetrics" xml:space="preserve">
+    <value>控件内文字与图标</value>
+  </data>
+  <data name="S_Display_ButtonMetrics_D" xml:space="preserve">
+    <value>单独调整悬浮窗控件内的文字与图标像素大小，0 表示跟随控件尺寸自动缩放</value>
+  </data>
+  <data name="S_Display_ButtonFontSize" xml:space="preserve">
+    <value>控件文字大小</value>
+  </data>
+  <data name="S_Display_ButtonIconSize" xml:space="preserve">
+    <value>控件图标大小</value>
+  </data>
+  <data name="S_Buttons_Texts" xml:space="preserve">
+    <value>控件文字</value>
+  </data>
+  <data name="S_Buttons_Texts_D" xml:space="preserve">
+    <value>自定义各控件显示的说明文字，留空使用默认名称，最多 12 字</value>
+  </data>
+  <data name="S_Buttons_Text_RollCall" xml:space="preserve">
+    <value>点名按钮文字</value>
+  </data>
+  <data name="S_Buttons_Text_QuickDraw" xml:space="preserve">
+    <value>闪抽按钮文字</value>
+  </data>
+  <data name="S_Buttons_Text_Lottery" xml:space="preserve">
+    <value>抽奖按钮文字</value>
+  </data>
+  <data name="S_Buttons_Text_Timer" xml:space="preserve">
+    <value>计时按钮文字</value>
+  </data>
+  <data name="S_Buttons_Text_Hint" xml:space="preserve">
+    <value>留空使用默认</value>
   </data>
 </root>

@@ -61,6 +61,19 @@ public partial class FloatingWindowSettingsConfig : ObservableObject
     [ObservableProperty] private string _floatingWindowText = string.Empty;
     // 自定义文字字号（像素）：0 表示跟随悬浮窗尺寸自动缩放，与按钮字号保持同一比例
     [ObservableProperty] private int _floatingWindowTextFontSize;
+
+    // 悬浮窗圆角（像素）：0 为直角；上限 32，再大就会吃掉按钮的可点区域
+    [ObservableProperty] private int _floatingWindowCornerRadius = 8;
+
+    // 控件内文字/图标尺寸（像素）：0 表示跟随悬浮窗尺寸自动缩放
+    [ObservableProperty] private int _floatingWindowButtonFontSize;
+    [ObservableProperty] private int _floatingWindowButtonIconSize;
+
+    // 内置按钮的显示文字：留空时回落到当前语言的默认文案（见 FloatingWindow.ResolveButtonLabel）
+    [ObservableProperty] private string _rollCallButtonText = string.Empty;
+    [ObservableProperty] private string _quickDrawButtonText = string.Empty;
+    [ObservableProperty] private string _lotteryButtonText = string.Empty;
+    [ObservableProperty] private string _timerButtonText = string.Empty;
     [ObservableProperty] private int _longPressDuration = 500;
     [ObservableProperty] private bool _doNotStealFocus = true;
     [ObservableProperty] private bool _hideOnForeground = false;

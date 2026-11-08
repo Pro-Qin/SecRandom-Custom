@@ -330,6 +330,7 @@ public partial class FloatingWindow : Window
     private void ApplyWindowSettings(FloatingWindowSettingsConfig settings)
     {
         WindowBorder.Opacity = Math.Clamp(settings.FloatingWindowOpacity, 20, 100) / 100.0;
+        WindowBorder.CornerRadius = new CornerRadius(Math.Clamp(settings.FloatingWindowCornerRadius, 0, 32));
 
         // 顺序是刻意的：免激活样式要先落盘，因为平台层刷新扩展样式时会重新排一次 z 序；
         // 置顶必须最后写，否则会被随后的样式刷新抢回普通层。设置实时切换、简洁模式切换、
@@ -513,6 +514,15 @@ public partial class FloatingWindow : Window
         _wasVisibleBeforeCourseLinkage = false;
     }
 
+    /// <summary>
+    ///     内置按钮的文案解析：配置留空就回落到当前语言文案，避免用户清空输入框后按钮变成空白格。
+    ///     纯图标样式下这段文字仍用于工具提示与辅助功能。
+    /// </summary>
+    private static string ResolveButtonLabel(string? configured, string fallback)
+    {
+        return string.IsNullOrWhiteSpace(configured) ? fallback : configured.Trim();
+    }
+
     private static Button GetStartingButton(FloatingWindowSettingsConfig settings)
     {
         return CreateButton(FluentIcons.ArrowClockwiseRegular, Langs.Common.Resources.Feat_Starting, settings);
@@ -520,7 +530,10 @@ public partial class FloatingWindow : Window
 
     private static Button GetRollCallButton(FloatingWindowSettingsConfig settings)
     {
-        var b = CreateButton(FluentIcons.PeopleFilled, Langs.Common.Resources.Feat_RollCall, settings);
+        var b = CreateButton(
+            FluentIcons.PeopleFilled,
+            ResolveButtonLabel(settings.RollCallButtonText, Langs.Common.Resources.Feat_RollCall),
+            settings);
 
         b.Click += (sender, args) =>
         {
@@ -532,7 +545,10 @@ public partial class FloatingWindow : Window
 
     private static Button GetQuickDrawButton(FloatingWindowSettingsConfig settings)
     {
-        var b = CreateButton(FluentIcons.FlashFilled, Langs.Common.Resources.Feat_QuickDraw, settings);
+        var b = CreateButton(
+            FluentIcons.FlashFilled,
+            ResolveButtonLabel(settings.QuickDrawButtonText, Langs.Common.Resources.Feat_QuickDraw),
+            settings);
 
         b.Click += (sender, args) =>
         {
@@ -544,7 +560,10 @@ public partial class FloatingWindow : Window
 
     private static Button GetLotteryButton(FloatingWindowSettingsConfig settings)
     {
-        var b = CreateButton(FluentIcons.GiftFilled, Langs.Common.Resources.Feat_Lottery, settings);
+        var b = CreateButton(
+            FluentIcons.GiftFilled,
+            ResolveButtonLabel(settings.LotteryButtonText, Langs.Common.Resources.Feat_Lottery),
+            settings);
 
         b.Click += (sender, args) =>
         {
@@ -556,7 +575,10 @@ public partial class FloatingWindow : Window
 
     private static Button GetTimerButton(FloatingWindowSettingsConfig settings)
     {
-        var b = CreateButton(FluentIcons.TimerFilled, Langs.Common.Resources.Feat_Timer, settings);
+        var b = CreateButton(
+            FluentIcons.TimerFilled,
+            ResolveButtonLabel(settings.TimerButtonText, Langs.Common.Resources.Feat_Timer),
+            settings);
         b.Click += (_, _) => _ = IAppHost.GetService<TimerViewService>().ShowAsync();
         return b;
     }
@@ -569,11 +591,26 @@ public partial class FloatingWindow : Window
     {
         var size = GetEffectiveButtonSize(settings);
         var displayStyle = settings.FloatingWindowDisplayStyle;
-        var padding = new Thickness(Math.Max(2, size * 0.08));
+        var paddingValue = Math.Max(2, size * 0.08);
+        var padding = new Thickness(paddingValue);
+
+        // 控件内图标与文字尺寸：配置为 0 时沿用"按按钮尺寸比例缩放"的旧观感，
+        // 正数则直接作为像素值使用（钳制在可用区间内，避免撑破按钮或小到看不见）。
+        var iconSize = settings.FloatingWindowButtonIconSize > 0
+            ? Math.Clamp(settings.FloatingWindowButtonIconSize, 8, 128)
+            : displayStyle == 1 ? size * 0.64 : size * 0.46;
+        var fontSize = settings.FloatingWindowButtonFontSize > 0
+            ? Math.Clamp(settings.FloatingWindowButtonFontSize, 6, 72)
+            : displayStyle == 2 ? Math.Max(10, size * 0.28) : Math.Max(8, size * 0.16);
+
+        var width = GetButtonWidth(size, label, displayStyle, padding, fontSize);
+        if (displayStyle == 1)
+            width = Math.Max(width, iconSize + paddingValue * 2);
+
         var button = new Button
         {
-            Height = size,
-            Width = GetButtonWidth(size, label, displayStyle, padding),
+            Height = Math.Max(size, displayStyle == 1 ? iconSize + paddingValue * 2 : size),
+            Width = width,
             Margin = new Thickness(2),
             Padding = padding,
             HorizontalContentAlignment = HorizontalAlignment.Center,
@@ -582,11 +619,11 @@ public partial class FloatingWindow : Window
 
         button.Content = displayStyle switch
         {
-            1 => CreateIconVisual(icon, image, size * 0.64),
+            1 => CreateIconVisual(icon, image, iconSize),
             2 => new TextBlock
             {
                 Text = label,
-                FontSize = Math.Max(10, size * 0.28),
+                FontSize = fontSize,
                 TextAlignment = TextAlignment.Center,
                 TextWrapping = TextWrapping.Wrap,
                 VerticalAlignment = VerticalAlignment.Center
@@ -599,11 +636,11 @@ public partial class FloatingWindow : Window
                 VerticalAlignment = VerticalAlignment.Center,
                 Children =
                 {
-                    CreateIconVisual(icon, image, size * 0.46),
+                    CreateIconVisual(icon, image, iconSize),
                     new TextBlock
                     {
                         Text = label,
-                        FontSize = Math.Max(8, size * 0.16),
+                        FontSize = fontSize,
                         TextAlignment = TextAlignment.Center,
                         TextWrapping = TextWrapping.Wrap,
                         HorizontalAlignment = HorizontalAlignment.Center
@@ -684,14 +721,11 @@ public partial class FloatingWindow : Window
         CustomTextBlock.MaxWidth = Math.Clamp(contentWidth > 1 ? contentWidth : 160, 120, 360);
     }
 
-    private static double GetButtonWidth(int size, string label, int displayStyle, Thickness padding)
+    private static double GetButtonWidth(int size, string label, int displayStyle, Thickness padding, double fontSize)
     {
         if (displayStyle == 1)
             return size;
 
-        var fontSize = displayStyle == 2
-            ? Math.Max(10, size * 0.28)
-            : Math.Max(9, size * 0.22);
         var textWidth = label.Sum(character => character switch
         {
             ' ' => fontSize * 0.35,

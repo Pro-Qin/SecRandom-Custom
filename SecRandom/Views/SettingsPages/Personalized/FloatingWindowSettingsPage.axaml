@@ -98,11 +98,81 @@
                 </fa:FASettingsExpander.Footer>
             </fa:FASettingsExpander>
 
+            <fa:FASettingsExpander x:Name="S_Display_CornerRadius"
+                                   Header="{x:Static lsp:Resources.S_Display_CornerRadius}"
+                                   Description="{x:Static lsp:Resources.S_Display_CornerRadius_D}"
+                                   IconSource="{sr:FluentIconSource {sr:Fi BorderOutsideFilled}}">
+                <fa:FASettingsExpander.Footer>
+                    <NumericUpDown Value="{Binding Settings.FloatingWindowCornerRadius}"
+                                   Minimum="0" Maximum="32" Increment="1"
+                                   FormatString="0" MinWidth="140" />
+                </fa:FASettingsExpander.Footer>
+            </fa:FASettingsExpander>
+
+            <fa:FASettingsExpander x:Name="S_Display_ButtonMetrics"
+                                   Header="{x:Static lsp:Resources.S_Display_ButtonMetrics}"
+                                   Description="{x:Static lsp:Resources.S_Display_ButtonMetrics_D}"
+                                   IconSource="{sr:FluentIconSource {sr:Fi TextFontSizeFilled}}">
+                <fa:FASettingsExpander.Footer>
+                    <StackPanel Spacing="8">
+                        <!-- 0 = 跟随悬浮窗尺寸按比例缩放 -->
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <TextBlock Text="{x:Static lsp:Resources.S_Display_ButtonFontSize}"
+                                       VerticalAlignment="Center" MinWidth="120" />
+                            <NumericUpDown Value="{Binding Settings.FloatingWindowButtonFontSize}"
+                                           Minimum="0" Maximum="72" Increment="1"
+                                           FormatString="0" MinWidth="140" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <TextBlock Text="{x:Static lsp:Resources.S_Display_ButtonIconSize}"
+                                       VerticalAlignment="Center" MinWidth="120" />
+                            <NumericUpDown Value="{Binding Settings.FloatingWindowButtonIconSize}"
+                                           Minimum="0" Maximum="128" Increment="1"
+                                           FormatString="0" MinWidth="140" />
+                        </StackPanel>
+                    </StackPanel>
+                </fa:FASettingsExpander.Footer>
+            </fa:FASettingsExpander>
+
             <Separator Margin="0 12 0 4" />
             <sr:IconText x:Name="S_Buttons"
                          Text="{x:Static lsp:Resources.S_Buttons}"
                          Glyph="{sr:Fi FlashFilled}"
                          Margin="0 0 0 4" />
+
+            <fa:FASettingsExpander x:Name="S_Buttons_Texts"
+                                   Header="{x:Static lsp:Resources.S_Buttons_Texts}"
+                                   Description="{x:Static lsp:Resources.S_Buttons_Texts_D}"
+                                   IconSource="{sr:FluentIconSource {sr:Fi TextFontFilled}}">
+                <fa:FASettingsExpander.Footer>
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="120,240" ColumnSpacing="12">
+                            <TextBlock Text="{x:Static lsp:Resources.S_Buttons_Text_RollCall}" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" MaxLength="12" AcceptsReturn="False" TextWrapping="NoWrap"
+                                     PlaceholderText="{x:Static lsp:Resources.S_Buttons_Text_Hint}"
+                                     Text="{Binding Settings.RollCallButtonText}" />
+                        </Grid>
+                        <Grid ColumnDefinitions="120,240" ColumnSpacing="12">
+                            <TextBlock Text="{x:Static lsp:Resources.S_Buttons_Text_QuickDraw}" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" MaxLength="12" AcceptsReturn="False" TextWrapping="NoWrap"
+                                     PlaceholderText="{x:Static lsp:Resources.S_Buttons_Text_Hint}"
+                                     Text="{Binding Settings.QuickDrawButtonText}" />
+                        </Grid>
+                        <Grid ColumnDefinitions="120,240" ColumnSpacing="12">
+                            <TextBlock Text="{x:Static lsp:Resources.S_Buttons_Text_Lottery}" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" MaxLength="12" AcceptsReturn="False" TextWrapping="NoWrap"
+                                     PlaceholderText="{x:Static lsp:Resources.S_Buttons_Text_Hint}"
+                                     Text="{Binding Settings.LotteryButtonText}" />
+                        </Grid>
+                        <Grid ColumnDefinitions="120,240" ColumnSpacing="12">
+                            <TextBlock Text="{x:Static lsp:Resources.S_Buttons_Text_Timer}" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" MaxLength="12" AcceptsReturn="False" TextWrapping="NoWrap"
+                                     PlaceholderText="{x:Static lsp:Resources.S_Buttons_Text_Hint}"
+                                     Text="{Binding Settings.TimerButtonText}" />
+                        </Grid>
+                    </StackPanel>
+                </fa:FASettingsExpander.Footer>
+            </fa:FASettingsExpander>
 
             <fa:FASettingsExpander x:Name="S_Buttons_EnabledItems"
                                    Header="{x:Static lsp:Resources.S_Buttons_EnabledItems}"
