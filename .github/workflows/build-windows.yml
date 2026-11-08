@@ -183,19 +183,6 @@ jobs:
             更新源：Pro-Qin/SecRandom-Custom
             官方版请前往 https://github.com/SECTL/SecRandom
 
-      - name: Point release metadata at this tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          $tag = $env:PKG_VERSION
-          $path = 'metadata.yaml'
-          $content = Get-Content -LiteralPath $path -Raw
-          $updated = [regex]::Replace($content, '(?m)^(  release:\r?\n    tag: )\S+$', "${1}$tag")
-          if ($updated -ceq $content) { "metadata.yaml 的 release 通道已经指向 $tag"; exit 0 }
-          [IO.File]::WriteAllText($path, $updated, [Text.UTF8Encoding]::new($false))
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add $path
-          git commit -m "chore: release $tag [skip ci]"
-          git push origin HEAD:master
+      # release 通道的 tag 由发版人在打 tag 前手动推进到 metadata.yaml，并随同一个 push 提交。
+      # 不在 workflow 里自动回写：GITHUB_TOKEN 的写权限受仓库设置约束，push 被拒时
+      # continue-on-error 会把失败吞成绿勾，metadata 就静默停在旧 tag，客户端更新检查随即 404。
